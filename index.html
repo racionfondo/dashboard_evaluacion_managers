@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Evaluaci&oacute;n de Managers - FAP</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <style>
+        :root {
+            --gs-color: #3B82F6; --br-color: #38BDF8; --ms-color: #34D399;
+            --gs-light: rgba(59,130,246,0.15); --br-light: rgba(56,189,248,0.15); --ms-light: rgba(52,211,153,0.15);
+            --bg: #0F1117; --bg-secondary: #161822; --card: #1C1E2E; --card-hover: #232640;
+            --text: #E8E8F0; --text-secondary: #8B8DA3; --border: #2A2D42;
+            --accent: #6366F1; --positive: #34D399; --negative: #F87171; --warning: #FBBF24;
+        }
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body { font-family:'Segoe UI',system-ui,sans-serif; background:var(--bg); color:var(--text); line-height:1.5; }
+        .header { background:transparent; color:white; padding:1.5rem 2rem; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.15); }
+        .header h1 { font-size:1.5rem; font-weight:700; color:#FFFFFF; }
+        .header .subtitle { font-size:0.85rem; color:rgba(255,255,255,0.7); margin-top:0.2rem; }
+        .header-right { text-align:right; font-size:0.85rem; color:rgba(255,255,255,0.8); }
+        .header-right strong { color:#FFFFFF; }
+        .nav-tabs { background:transparent; border-bottom:1px solid rgba(255,255,255,0.15); padding:0 2rem; display:flex; gap:0; overflow-x:auto; }
+        .nav-tab { padding:0.85rem 1.5rem; cursor:pointer; border-bottom:3px solid transparent; font-size:0.85rem; font-weight:500; color:rgba(255,255,255,0.55); transition:all 0.2s; white-space:nowrap; user-select:none; }
+        .nav-tab:hover { color:#FFFFFF; }
+        .nav-tab.active { color:#FFFFFF; border-bottom-color:#FFFFFF; font-weight:600; }
+        .container { padding:1.5rem 2rem; max-width:1600px; margin:0 auto; }
+        .section { display:none; } .section.active { display:block; }
+        .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:1.5rem; }
+        .grid-3 { display:grid; grid-template-columns:repeat(3,1fr); gap:1.5rem; }
+        .grid-4 { display:grid; grid-template-columns:repeat(4,1fr); gap:1rem; }
+        .card { background:var(--card); border-radius:14px; padding:1.5rem; border:1px solid var(--border); transition:all 0.25s; }
+        .card:hover { border-color:#3a3d5c; background:var(--card-hover); }
+        .card-title { font-size:0.78rem; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-secondary); margin-bottom:1rem; font-weight:600; }
+        .kpi-card { text-align:center; padding:1.2rem 1rem; }
+        .kpi-value { font-size:1.8rem; font-weight:700; margin:0.3rem 0; }
+        .kpi-label { font-size:0.75rem; color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.05em; }
+        .kpi-sub { font-size:0.8rem; margin-top:0.3rem; color:var(--text-secondary); }
+        .manager-badge { display:inline-flex; align-items:center; gap:0.4rem; padding:0.3rem 0.8rem; border-radius:20px; font-size:0.8rem; font-weight:600; }
+        .badge-gs { background:var(--gs-light); color:var(--gs-color); }
+        .badge-br { background:var(--br-light); color:var(--br-color); }
+        .badge-ms { background:var(--ms-light); color:var(--ms-color); }
+        .chart-container { position:relative; width:100%; height:320px; }
+        .chart-container.tall { height:400px; }
+        table { width:100%; border-collapse:collapse; font-size:0.85rem; }
+        th { background:rgba(99,102,241,0.08); padding:0.7rem 1rem; text-align:left; font-weight:600; font-size:0.78rem; text-transform:uppercase; letter-spacing:0.03em; color:var(--text-secondary); border-bottom:1px solid var(--border); }
+        td { padding:0.7rem 1rem; border-bottom:1px solid var(--border); }
+        tr:hover td { background:rgba(99,102,241,0.04); }
+        .positive { color:var(--positive); font-weight:600; } .negative { color:var(--negative); font-weight:600; }
+        .rank-badge { display:inline-flex; align-items:center; justify-content:center; width:32px; height:32px; border-radius:50%; font-weight:700; font-size:0.9rem; color:#0F1117; }
+        .rank-1 { background:linear-gradient(135deg,#FFD700,#FFA500); }
+        .rank-2 { background:linear-gradient(135deg,#C0C0C0,#A0A0A0); }
+        .rank-3 { background:linear-gradient(135deg,#CD7F32,#8B5A2B); }
+        .legend-inline { display:flex; justify-content:center; gap:1.5rem; margin-bottom:1rem; flex-wrap:wrap; }
+        .legend-item { display:flex; align-items:center; gap:0.4rem; font-size:0.8rem; font-weight:500; }
+        .legend-dot { width:12px; height:12px; border-radius:3px; }
+        .tooltip-info { font-size:0.75rem; color:var(--text-secondary); font-style:italic; margin-top:0.5rem; }
+        .section-title { font-size:1.1rem; font-weight:700; margin-bottom:1.2rem; color:var(--text); }
+        .port-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:1rem; }
+        .port-card { background:var(--card); border:1px solid var(--border); border-radius:14px; padding:1.2rem; transition:all 0.25s; position:relative; overflow:hidden; }
+        .port-card:hover { border-color:#3a3d5c; background:var(--card-hover); transform:translateY(-2px); }
+        .port-card::before { content:''; position:absolute; top:0; left:0; right:0; height:3px; }
+        .port-card.accent-gs::before { background:linear-gradient(90deg,var(--gs-color),transparent); }
+        .port-card.accent-br::before { background:linear-gradient(90deg,var(--br-color),transparent); }
+        .port-card.accent-ms::before { background:linear-gradient(90deg,var(--ms-color),transparent); }
+        .port-card.accent-other::before { background:linear-gradient(90deg,#FBBF24,transparent); }
+        .port-card-name { font-size:0.9rem; font-weight:700; margin-bottom:0.3rem; }
+        .port-card-manager { font-size:0.75rem; margin-bottom:0.8rem; }
+        .port-card-value { font-size:1.4rem; font-weight:700; margin-bottom:0.5rem; }
+        .port-card-row { display:flex; justify-content:space-between; font-size:0.78rem; padding:0.25rem 0; color:var(--text-secondary); }
+        .port-card-row span:last-child { font-weight:600; color:var(--text); }
+        .port-card-benchmark { margin-top:0.6rem; padding-top:0.6rem; border-top:1px solid var(--border); font-size:0.7rem; color:var(--text-secondary); }
+        .manager-card { position:relative; overflow:hidden; }
+        .manager-card::before { content:''; position:absolute; top:0; left:0; right:0; height:3px; }
+        .manager-card.mc-gs::before { background:linear-gradient(90deg,var(--gs-color),transparent); }
+        .manager-card.mc-ms::before { background:linear-gradient(90deg,var(--ms-color),transparent); }
+        .manager-card.mc-br::before { background:linear-gradient(90deg,var(--br-color),transparent); }
+
+        /* Upload button */
+        .upload-area { display:flex; align-items:center; gap:1rem; }
+        .upload-btn { background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.25); color:#FFF; padding:0.5rem 1.2rem; border-radius:8px; cursor:pointer; font-size:0.82rem; font-weight:600; transition:all 0.2s; display:flex; align-items:center; gap:0.5rem; }
+        .upload-btn:hover { background:rgba(255,255,255,0.2); border-color:rgba(255,255,255,0.4); }
+        .upload-status { font-size:0.75rem; color:var(--positive); display:none; }
+        #fileInput { display:none; }
+
+        @media (max-width:1024px) { .grid-2,.grid-3 { grid-template-columns:1fr; } .grid-4 { grid-template-columns:1fr 1fr; } .port-grid { grid-template-columns:1fr 1fr; } }
+        @media (max-width:600px) { .header { flex-direction:column; text-align:center; gap:0.5rem; } .container { padding:1rem; } .grid-4,.port-grid { grid-template-columns:1fr; } }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <div>
+        <h1>Dashboard de Evaluaci&oacute;n de Managers</h1>
+        <div class="subtitle">Fondo de Ahorro de Panam&aacute; &mdash; Portafolio de Renta Fija Global</div>
+    </div>
+    <div class="upload-area">
+        <label class="upload-btn" for="fileInput">&#x21BB; Actualizar Datos (Excel)</label>
+        <input type="file" id="fileInput" accept=".xlsx,.xls">
+        <span class="upload-status" id="uploadStatus"></span>
+    </div>
+    <div class="header-right">
+        <div><strong>Fecha:</strong> <span id="hdrFecha">31 de diciembre de 2025</span></div>
+        <div><strong>Benchmark:</strong> BBG Barclays Global Aggregate</div>
+    </div>
+</div>
+
+<div class="nav-tabs">
+    <div class="nav-tab active" data-tab="resumen">Resumen Ejecutivo</div>
+    <div class="nav-tab" data-tab="rendimiento">Rendimiento</div>
+    <div class="nav-tab" data-tab="riesgo">Riesgo & Consistencia</div>
+    <div class="nav-tab" data-tab="scoring">Scoring & Ranking</div>
+    <div class="nav-tab" data-tab="portafolio">Composici&oacute;n</div>
+</div>
+
+<div class="container">
+    <!-- All sections rendered by JS -->
+    <div class="section active" id="resumen"></div>
+    <div class="section" id="rendimiento"></div>
+    <div class="section" id="riesgo"></div>
+    <div class="section" id="scoring"></div>
+    <div class="section" id="portafolio"></div>
+</div>
+
+<script>
+// ===== Navigation =====
+document.querySelectorAll('.nav-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+        document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+        tab.classList.add('active');
+        document.getElementById(tab.dataset.tab).classList.add('active');
+    });
+});
+
+// ===== Colors =====
+const GS='#3B82F6', BR='#38BDF8', MS='#34D399';
+const GS_BG='rgba(59,130,246,0.75)', BR_BG='rgba(56,189,248,0.75)', MS_BG='rgba(52,211,153,0.75)';
+const tickColor='#8B8DA3', gridColor='rgba(255,255,255,0.06)';
+Chart.defaults.font.family="'Segoe UI',system-ui,sans-serif";
+Chart.defaults.font.size=12;
+Chart.defaults.color='#8B8DA3';
+
+// ===== Chart instances =====
+let charts = {};
+
+// ===== Helper: read cell value =====
+function cv(ws, ref) {
+    const c = ws[ref];
+    if (!c) return null;
+    return c.v;
+}
+function cn(ws, ref) { return Number(cv(ws, ref)) || 0; }
+
+// ===== Formatting helpers =====
+function fmtM(v) { return '$' + (v/1e6).toFixed(1) + 'M'; }
+function fmtUSD(v) { return '$' + Math.round(v).toLocaleString('en-US'); }
+function fmtPct(v) { return (v*100).toFixed(2) + '%'; }
+function fmtBps(v) { return '+' + (v*10000).toFixed(1) + ' bps'; }
+function fmtR2(v) { return v.toFixed(2); }
+function fmtPct1(v) { return (v*100).toFixed(1) + '%'; }
+function valCls(v, inv) { return inv ? (v < 0 ? 'positive' : 'negative') : (v > 0 ? 'positive' : 'negative'); }
+function bestCls(vals, idx, lower) {
+    const best = lower ? Math.min(...vals) : Math.max(...vals);
+    return vals[idx] === best ? 'positive' : '';
+}
+function worstCls(vals, idx, lower) {
+    const worst = lower ? Math.max(...vals) : Math.min(...vals);
+    return vals[idx] === worst ? 'negative' : '';
+}
+
+// ===== Extract all data from workbook =====
+function extractData(wb) {
+    const gs = wb.Sheets['GS-RF I'];
+    const br = wb.Sheets['BR-RF II'];
+    const ms = wb.Sheets['MS-RF III'];
+    const ev = wb.Sheets['Evaluacion (condensado)'] || wb.Sheets['Evaluación (condensado)'];
+    const prop = wb.Sheets['Proporción'] || wb.Sheets['Proporcion'];
+
+    const d = {};
+
+    // Date
+    const rawDate = cv(gs, 'E12');
+    if (rawDate instanceof Date) {
+        const months = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+        d.fecha = rawDate.getDate() + ' de ' + months[rawDate.getMonth()] + ' de ' + rawDate.getFullYear();
+    } else if (typeof rawDate === 'number') {
+        // Excel serial date
+        const dt = XLSX.SSF.parse_date_code(rawDate);
+        const months = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+        d.fecha = dt.d + ' de ' + months[dt.m-1] + ' de ' + dt.y;
+    } else {
+        d.fecha = String(rawDate || '');
+    }
+
+    // Portfolio values
+    d.gsVal = cn(gs,'E13'); d.brVal = cn(br,'E13'); d.msVal = cn(ms,'E13');
+    d.totalVal = d.gsVal + d.brVal + d.msVal;
+
+    // Returns (Portfolio) - YTD, 1Yr, 3Yr, 5Yr
+    d.gsRet = [cn(gs,'D22'), cn(gs,'E22'), cn(gs,'F22'), cn(gs,'G22')];
+    d.brRet = [cn(br,'D22'), cn(br,'E22'), cn(br,'F22'), cn(br,'G22')];
+    d.msRet = [cn(ms,'D22'), cn(ms,'E22'), cn(ms,'F22'), cn(ms,'G22')];
+    d.bmRet = [cn(gs,'D23'), cn(gs,'E23'), cn(gs,'F23'), cn(gs,'G23')];
+
+    // Alfa - YTD, 1Yr, 3Yr, 5Yr
+    d.gsAlfa = [cn(gs,'D24'), cn(gs,'E24'), cn(gs,'F24'), cn(gs,'G24')];
+    d.brAlfa = [cn(br,'D24'), cn(br,'E24'), cn(br,'F24'), cn(br,'G24')];
+    d.msAlfa = [cn(ms,'D24'), cn(ms,'E24'), cn(ms,'F24'), cn(ms,'G24')];
+
+    // IR - 1Yr, 3Yr, 5Yr
+    d.gsIR = [cn(gs,'K24'), cn(gs,'L24'), cn(gs,'M24')];
+    d.brIR = [cn(br,'K24'), cn(br,'L24'), cn(br,'M24')];
+    d.msIR = [cn(ms,'K24'), cn(ms,'L24'), cn(ms,'M24')];
+
+    // Sharpe - 1Yr, 3Yr, 5Yr
+    d.gsSh = [cn(gs,'K22'), cn(gs,'L22'), cn(gs,'M22')];
+    d.brSh = [cn(br,'K22'), cn(br,'L22'), cn(br,'M22')];
+    d.msSh = [cn(ms,'K22'), cn(ms,'L22'), cn(ms,'M22')];
+    d.bmSh = [cn(gs,'K23'), cn(gs,'L23'), cn(gs,'M23')];
+
+    // TE - 1Yr, 3Yr, 5Yr
+    d.gsTE = [cn(gs,'D39'), cn(gs,'E39'), cn(gs,'F39')];
+    d.brTE = [cn(br,'D39'), cn(br,'E39'), cn(br,'F39')];
+    d.msTE = [cn(ms,'D39'), cn(ms,'E39'), cn(ms,'F39')];
+
+    // VaR 95% - 1Yr, 3Yr, 5Yr
+    d.gsVaR = [cn(gs,'K39'), cn(gs,'L39'), cn(gs,'M39')];
+    d.brVaR = [cn(br,'K39'), cn(br,'L39'), cn(br,'M39')];
+    d.msVaR = [cn(ms,'K39'), cn(ms,'L39'), cn(ms,'M39')];
+
+    // Hit Ratio - 1Yr, 3Yr, 5Yr
+    d.gsHR = [cn(gs,'D40'), cn(gs,'E40'), cn(gs,'F40')];
+    d.brHR = [cn(br,'D40'), cn(br,'E40'), cn(br,'F40')];
+    d.msHR = [cn(ms,'D40'), cn(ms,'E40'), cn(ms,'F40')];
+
+    // Drawdown - 1Yr, 3Yr, 5Yr
+    d.gsDD = [cn(gs,'K40'), cn(gs,'L40'), cn(gs,'M40')];
+    d.brDD = [cn(br,'K40'), cn(br,'L40'), cn(br,'M40')];
+    d.msDD = [cn(ms,'K40'), cn(ms,'L40'), cn(ms,'M40')];
+
+    // Z-Scores from Evaluacion condensado: Alfa, IR, TE, VaR
+    if (ev) {
+        d.gsZ = [cn(ev,'F52'), cn(ev,'F53'), cn(ev,'F54'), cn(ev,'F55')];
+        d.brZ = [cn(ev,'H52'), cn(ev,'H53'), cn(ev,'H54'), cn(ev,'H55')];
+        d.msZ = [cn(ev,'J52'), cn(ev,'J53'), cn(ev,'J54'), cn(ev,'J55')];
+
+        // Z-Scale 1-5
+        d.gsZS = [cn(ev,'F60'), cn(ev,'F61'), cn(ev,'F62'), cn(ev,'F63')];
+        d.brZS = [cn(ev,'H60'), cn(ev,'H61'), cn(ev,'H62'), cn(ev,'H63')];
+        d.msZS = [cn(ev,'J60'), cn(ev,'J61'), cn(ev,'J62'), cn(ev,'J63')];
+
+        // Scoring ponderado
+        d.gsSc = [cn(ev,'G69'), cn(ev,'G70'), cn(ev,'G71'), cn(ev,'G72')];
+        d.brSc = [cn(ev,'I69'), cn(ev,'I70'), cn(ev,'I71'), cn(ev,'I72')];
+        d.msSc = [cn(ev,'K69'), cn(ev,'K70'), cn(ev,'K71'), cn(ev,'K72')];
+
+        d.gsTotal = cn(ev,'G73'); d.brTotal = cn(ev,'I73'); d.msTotal = cn(ev,'K73');
+        d.gsRank = cn(ev,'G74'); d.brRank = cn(ev,'I74'); d.msRank = cn(ev,'K74');
+    }
+
+    // Proporcion data for portfolio cards
+    if (prop) {
+        d.portCards = [];
+        const rows = [
+            {r:11, name:'Renta Variable', mgr:'Goldman Sachs', cls:'gs', bmR:12},
+            {r:15, name:'Short Duration (Cash)', mgr:'Morgan Stanley', cls:'ms', bmR:16},
+            {r:21, name:'Renta Fija Global II', mgr:'BlackRock Inc', cls:'br', bmR:22},
+            {r:23, name:'Renta Fija Global I', mgr:'Goldman Sachs', cls:'gs', bmR:24},
+            {r:25, name:'Renta Fija Global III', mgr:'Morgan Stanley', cls:'ms', bmR:26},
+            {r:36, name:'Renta Fija ILB', mgr:'Morgan Stanley', cls:'ms', bmR:37},
+            {r:28, name:'Global High Yield', mgr:'Neuberger Berman', cls:'other', bmR:29},
+            {r:32, name:'MBS', mgr:'Morgan Stanley', cls:'ms', bmR:33},
+            {r:38, name:'Alternative Investments', mgr:'Varios', cls:'other', bmR:39}
+        ];
+        rows.forEach(x => {
+            const val = cn(prop,'D'+x.r);
+            const wt = cn(prop,'E'+x.r);
+            const sh1 = cv(prop,'F'+x.r);
+            const sh3 = cv(prop,'G'+x.r);
+            const bmName = cv(prop,'C'+x.bmR) || '';
+            d.portCards.push({
+                name: x.name, mgr: x.mgr, cls: x.cls,
+                val: val, weight: wt,
+                sh1: typeof sh1 === 'number' ? sh1 : null,
+                sh3: typeof sh3 === 'number' ? sh3 : null,
+                bm: bmName.trim().replace(/^\s+/,'')
+            });
+        });
+
+        // For FAP pie: aggregate categories
+        d.fapGlobalAgg = cn(prop,'D19');
+        d.fapEquity = cn(prop,'D9');
+        d.fapCash = cn(prop,'D13');
+        d.fapAlts = cn(prop,'D38');
+        d.fapHY = cn(prop,'D27');
+        d.fapMBS = cn(prop,'D30');
+        d.fapILB = cn(prop,'D34');
+    }
+
+    return d;
+}
+
+// ===== Render everything =====
+function renderDashboard(d) {
+    // Destroy existing charts
+    Object.values(charts).forEach(c => c.destroy());
+    charts = {};
+
+    // Header date
+    document.getElementById('hdrFecha').textContent = d.fecha;
+
+    // Averages
+    const avgAlfa = (d.gsAlfa[0] + d.brAlfa[0] + d.msAlfa[0]) / 3;
+    const avgIR = (d.gsIR[0] + d.brIR[0] + d.msIR[0]) / 3;
+
+    // Determine ranking order for manager cards
+    const managers = [
+        {name:'Goldman Sachs', val:d.gsVal, alfa:d.gsAlfa[0], ir:d.gsIR[0], hr:d.gsHR[0], total:d.gsTotal, rank:d.gsRank, cls:'gs', label:'Renta Fija I'},
+        {name:'Morgan Stanley', val:d.msVal, alfa:d.msAlfa[0], ir:d.msIR[0], hr:d.msHR[0], total:d.msTotal, rank:d.msRank, cls:'ms', label:'Renta Fija III'},
+        {name:'BlackRock Inc', val:d.brVal, alfa:d.brAlfa[0], ir:d.brIR[0], hr:d.brHR[0], total:d.brTotal, rank:d.brRank, cls:'br', label:'Renta Fija II'}
+    ];
+    const best = managers.reduce((a,b) => (a.rank < b.rank ? a : b));
+
+    // ===== RESUMEN =====
+    document.getElementById('resumen').innerHTML = `
+        <div class="section-title">Resumen Ejecutivo</div>
+        <div class="grid-4" style="margin-bottom:1.5rem">
+            <div class="card kpi-card"><div class="kpi-label">Valor Total del Portafolio</div><div class="kpi-value" style="color:#FFF">${fmtM(d.totalVal)}</div><div class="kpi-sub">Renta Fija Global</div></div>
+            <div class="card kpi-card"><div class="kpi-label">Alfa Promedio (YTD)</div><div class="kpi-value positive">${fmtBps(avgAlfa)}</div><div class="kpi-sub">Sobre benchmark</div></div>
+            <div class="card kpi-card"><div class="kpi-label">Mejor Manager (Ranking)</div><div class="kpi-value" style="color:var(--${best.cls}-color);font-size:1.4rem">${best.name}</div><div class="kpi-sub">Puntaje: ${best.total.toFixed(2)} / 5.00</div></div>
+            <div class="card kpi-card"><div class="kpi-label">IR Promedio (1 Yr)</div><div class="kpi-value positive">${avgIR.toFixed(2)}</div><div class="kpi-sub">Todos superan benchmark</div></div>
+        </div>
+        <div class="grid-3" style="margin-bottom:1.5rem">
+            ${managers.map(m => `<div class="card manager-card mc-${m.cls}">
+                <div class="card-title" style="color:var(--${m.cls}-color)">${m.name} &mdash; ${m.label}</div>
+                <div style="text-align:center">
+                    <span class="rank-badge rank-${m.rank}">${m.rank}</span>
+                    <div style="font-size:1.5rem;font-weight:700;margin:0.5rem 0;color:var(--${m.cls}-color)">${fmtM(m.val)}</div>
+                    <div class="kpi-label">Alfa YTD: <span class="positive">${fmtBps(m.alfa)}</span></div>
+                    <div class="kpi-label" style="margin-top:0.3rem">IR 1Yr: <span class="positive">${m.ir.toFixed(2)}</span></div>
+                    <div class="kpi-label" style="margin-top:0.3rem">Hit Ratio 1Yr: <span class="positive">${(m.hr*100).toFixed(1)}%</span></div>
+                </div>
+            </div>`).join('')}
+        </div>
+        <div class="grid-2">
+            <div class="card"><div class="card-title">Radar Comparativo &mdash; Z-Score Scaling 1-5</div><div class="chart-container tall"><canvas id="radarOverview"></canvas></div></div>
+            <div class="card"><div class="card-title">Puntaje Total por Manager (Scoring Ponderado)</div><div class="chart-container tall"><canvas id="scoringBar"></canvas></div></div>
+        </div>`;
+
+    // ===== RENDIMIENTO =====
+    document.getElementById('rendimiento').innerHTML = `
+        <div class="section-title">An&aacute;lisis de Rendimiento</div>
+        <div class="legend-inline">
+            <div class="legend-item"><div class="legend-dot" style="background:var(--gs-color)"></div>Goldman Sachs</div>
+            <div class="legend-item"><div class="legend-dot" style="background:var(--br-color)"></div>BlackRock Inc</div>
+            <div class="legend-item"><div class="legend-dot" style="background:var(--ms-color)"></div>Morgan Stanley</div>
+            <div class="legend-item"><div class="legend-dot" style="background:#6B7280;border:1px dashed #9CA3AF"></div>Benchmark</div>
+        </div>
+        <div class="grid-2" style="margin-bottom:1.5rem"><div class="card"><div class="card-title">Retorno del Portafolio vs Benchmark (Anualizado)</div><div class="chart-container"><canvas id="returnChart"></canvas></div></div><div class="card"><div class="card-title">Alfa (Retorno en Exceso al Benchmark)</div><div class="chart-container"><canvas id="alfaChart"></canvas></div></div></div>
+        <div class="grid-2" style="margin-bottom:1.5rem"><div class="card"><div class="card-title">Ratio de Informaci&oacute;n por Per&iacute;odo</div><div class="chart-container"><canvas id="irChart"></canvas></div></div><div class="card"><div class="card-title">Ratio de Sharpe por Per&iacute;odo</div><div class="chart-container"><canvas id="sharpeChart"></canvas></div></div></div>
+        <div class="card"><div class="card-title">Tabla Comparativa de Rendimiento</div>
+        <table><thead><tr><th>Manager</th><th>Valor (USD)</th><th>Retorno YTD</th><th>Alfa YTD</th><th>Alfa 3Yr</th><th>Alfa 5Yr</th><th>IR 1Yr</th><th>IR 3Yr</th><th>IR 5Yr</th><th>Sharpe 1Yr</th></tr></thead>
+        <tbody>
+            <tr><td><span class="manager-badge badge-gs">Goldman Sachs</span></td><td>${fmtUSD(d.gsVal)}</td><td class="positive">${fmtPct(d.gsRet[0])}</td><td class="positive">${fmtBps(d.gsAlfa[0])}</td><td class="positive">${fmtBps(d.gsAlfa[2])}</td><td class="positive">${fmtBps(d.gsAlfa[3])}</td><td class="positive">${fmtR2(d.gsIR[0])}</td><td class="positive">${fmtR2(d.gsIR[1])}</td><td class="positive">${fmtR2(d.gsIR[2])}</td><td>${fmtR2(d.gsSh[0])}</td></tr>
+            <tr><td><span class="manager-badge badge-ms">Morgan Stanley</span></td><td>${fmtUSD(d.msVal)}</td><td class="positive">${fmtPct(d.msRet[0])}</td><td class="positive">${fmtBps(d.msAlfa[0])}</td><td class="positive">${fmtBps(d.msAlfa[2])}</td><td class="positive">${fmtBps(d.msAlfa[3])}</td><td class="positive">${fmtR2(d.msIR[0])}</td><td class="positive">${fmtR2(d.msIR[1])}</td><td class="positive">${fmtR2(d.msIR[2])}</td><td>${fmtR2(d.msSh[0])}</td></tr>
+            <tr><td><span class="manager-badge badge-br">BlackRock Inc</span></td><td>${fmtUSD(d.brVal)}</td><td class="positive">${fmtPct(d.brRet[0])}</td><td class="positive">${fmtBps(d.brAlfa[0])}</td><td class="positive">${fmtBps(d.brAlfa[2])}</td><td class="positive">${fmtBps(d.brAlfa[3])}</td><td class="positive">${fmtR2(d.brIR[0])}</td><td class="positive">${fmtR2(d.brIR[1])}</td><td class="positive">${fmtR2(d.brIR[2])}</td><td>${fmtR2(d.brSh[0])}</td></tr>
+            <tr style="font-weight:600;background:rgba(99,102,241,0.06)"><td style="color:var(--text-secondary)">Benchmark</td><td>&mdash;</td><td>${fmtPct(d.bmRet[0])}</td><td>&mdash;</td><td>&mdash;</td><td>&mdash;</td><td>&mdash;</td><td>&mdash;</td><td>&mdash;</td><td>${fmtR2(d.bmSh[0])}</td></tr>
+        </tbody></table></div>`;
+
+    // ===== RIESGO =====
+    document.getElementById('riesgo').innerHTML = `
+        <div class="section-title">Riesgo & Consistencia</div>
+        <div class="legend-inline">
+            <div class="legend-item"><div class="legend-dot" style="background:var(--gs-color)"></div>Goldman Sachs</div>
+            <div class="legend-item"><div class="legend-dot" style="background:var(--br-color)"></div>BlackRock Inc</div>
+            <div class="legend-item"><div class="legend-dot" style="background:var(--ms-color)"></div>Morgan Stanley</div>
+        </div>
+        <div class="grid-2" style="margin-bottom:1.5rem"><div class="card"><div class="card-title">Tracking Error (en puntos base)</div><div class="chart-container"><canvas id="teChart"></canvas></div><div class="tooltip-info">Menor = m&aacute;s consistente con el benchmark.</div></div><div class="card"><div class="card-title">Value at Risk 95%</div><div class="chart-container"><canvas id="varChart"></canvas></div><div class="tooltip-info">Menor = menos riesgo de p&eacute;rdida.</div></div></div>
+        <div class="grid-2" style="margin-bottom:1.5rem"><div class="card"><div class="card-title">Hit Ratio (Efectividad)</div><div class="chart-container"><canvas id="hitRatioChart"></canvas></div><div class="tooltip-info">% de per&iacute;odos superando al benchmark.</div></div><div class="card"><div class="card-title">Maximum Drawdown Acumulado</div><div class="chart-container"><canvas id="drawdownChart"></canvas></div><div class="tooltip-info">Valores m&aacute;s cercanos a 0 son mejores.</div></div></div>
+        <div class="card"><div class="card-title">Tabla Comparativa de Riesgo y Consistencia</div>
+        <table><thead><tr><th>Manager</th><th>TE 1Yr</th><th>TE 3Yr</th><th>TE 5Yr</th><th>VaR 1Yr</th><th>VaR 3Yr</th><th>HR 1Yr</th><th>HR 3Yr</th><th>DD 1Yr</th><th>DD 5Yr</th></tr></thead>
+        <tbody>
+            <tr><td><span class="manager-badge badge-gs">Goldman Sachs</span></td><td>${d.gsTE[0].toFixed(1)}</td><td>${d.gsTE[1].toFixed(1)}</td><td>${d.gsTE[2].toFixed(1)}</td><td>${fmtPct1(d.gsVaR[0])}</td><td>${fmtPct1(d.gsVaR[1])}</td><td>${(d.gsHR[0]*100).toFixed(1)}%</td><td>${(d.gsHR[1]*100).toFixed(1)}%</td><td>${fmtPct1(d.gsDD[0])}</td><td>${fmtPct1(d.gsDD[2])}</td></tr>
+            <tr><td><span class="manager-badge badge-ms">Morgan Stanley</span></td><td>${d.msTE[0].toFixed(1)}</td><td>${d.msTE[1].toFixed(1)}</td><td>${d.msTE[2].toFixed(1)}</td><td>${fmtPct1(d.msVaR[0])}</td><td>${fmtPct1(d.msVaR[1])}</td><td>${(d.msHR[0]*100).toFixed(1)}%</td><td>${(d.msHR[1]*100).toFixed(1)}%</td><td>${fmtPct1(d.msDD[0])}</td><td>${fmtPct1(d.msDD[2])}</td></tr>
+            <tr><td><span class="manager-badge badge-br">BlackRock Inc</span></td><td>${d.brTE[0].toFixed(1)}</td><td>${d.brTE[1].toFixed(1)}</td><td>${d.brTE[2].toFixed(1)}</td><td>${fmtPct1(d.brVaR[0])}</td><td>${fmtPct1(d.brVaR[1])}</td><td>${(d.brHR[0]*100).toFixed(1)}%</td><td>${(d.brHR[1]*100).toFixed(1)}%</td><td>${fmtPct1(d.brDD[0])}</td><td>${fmtPct1(d.brDD[2])}</td></tr>
+        </tbody></table></div>`;
+
+    // ===== SCORING =====
+    document.getElementById('scoring').innerHTML = `
+        <div class="section-title">Scoring & Ranking Final</div>
+        <div class="grid-2" style="margin-bottom:1.5rem">
+            <div class="card"><div class="card-title">Z-Scores por Factor</div><div class="chart-container tall"><canvas id="zscoreChart"></canvas></div></div>
+            <div class="card"><div class="card-title">Z-Score Scaling (1 a 5)</div><div class="chart-container tall"><canvas id="zscaleChart"></canvas></div></div>
+        </div>
+        <div class="card"><div class="card-title">Puntaje Ponderado por Factor (25% cada uno)</div>
+        <table><thead><tr><th>Factor</th><th>M&eacute;trica</th><th>Peso</th><th>Goldman Sachs</th><th>BlackRock Inc</th><th>Morgan Stanley</th><th>Interpretaci&oacute;n</th></tr></thead>
+        <tbody>
+            <tr><td>Rendimiento</td><td>Alfa</td><td>25%</td><td>${d.gsSc[0].toFixed(2)}</td><td>${d.brSc[0].toFixed(2)}</td><td>${d.msSc[0].toFixed(2)}</td><td style="color:var(--text-secondary)">Alto = Bueno</td></tr>
+            <tr><td>Riesgo/Retorno</td><td>Ratio de Informaci&oacute;n</td><td>25%</td><td>${d.gsSc[1].toFixed(2)}</td><td>${d.brSc[1].toFixed(2)}</td><td>${d.msSc[1].toFixed(2)}</td><td style="color:var(--text-secondary)">Alto = Bueno</td></tr>
+            <tr><td>Consistencia</td><td>Tracking Error</td><td>25%</td><td>${d.gsSc[2].toFixed(2)}</td><td>${d.brSc[2].toFixed(2)}</td><td>${d.msSc[2].toFixed(2)}</td><td style="color:var(--text-secondary)">Bajo = Bueno</td></tr>
+            <tr><td>Riesgo a la baja</td><td>VaR 95%</td><td>25%</td><td>${d.gsSc[3].toFixed(2)}</td><td>${d.brSc[3].toFixed(2)}</td><td>${d.msSc[3].toFixed(2)}</td><td style="color:var(--text-secondary)">Bajo = Bueno</td></tr>
+            <tr style="font-weight:700;background:rgba(99,102,241,0.1)"><td colspan="2">Puntaje Total</td><td>100%</td><td style="color:var(--gs-color)">${d.gsTotal.toFixed(2)}</td><td style="color:var(--br-color)">${d.brTotal.toFixed(2)}</td><td style="color:var(--ms-color)">${d.msTotal.toFixed(2)}</td><td></td></tr>
+            <tr style="font-weight:700"><td colspan="2">Ranking Final</td><td></td><td><span class="rank-badge rank-${d.gsRank}">${d.gsRank}</span></td><td><span class="rank-badge rank-${d.brRank}">${d.brRank}</span></td><td><span class="rank-badge rank-${d.msRank}">${d.msRank}</span></td><td></td></tr>
+        </tbody></table></div>`;
+
+    // ===== PORTAFOLIO =====
+    let cardsHtml = '';
+    if (d.portCards) {
+        d.portCards.forEach(p => {
+            const sh1Str = p.sh1 !== null ? (p.sh1 < 0 ? `<span class="negative">${p.sh1.toFixed(2)}</span>` : (p.sh1 > 0.8 ? `<span class="positive">${p.sh1.toFixed(2)}</span>` : p.sh1.toFixed(2))) : '&mdash;';
+            const sh3Str = p.sh3 !== null ? (p.sh3 < 0 ? `<span class="negative">${p.sh3.toFixed(2)}</span>` : p.sh3.toFixed(2)) : '&mdash;';
+            const colorVar = p.cls === 'other' ? '#FBBF24' : `var(--${p.cls}-color)`;
+            const mgrBadge = p.cls === 'other' ? `<span style="color:var(--text-secondary)">${p.mgr}</span>` : `<span class="manager-badge badge-${p.cls}">${p.mgr}</span>`;
+            cardsHtml += `<div class="port-card accent-${p.cls}">
+                <div class="port-card-name" style="color:${colorVar}">${p.name}</div>
+                <div class="port-card-manager">${mgrBadge}</div>
+                <div class="port-card-value">${fmtM(p.val)}</div>
+                <div class="port-card-row"><span>Peso en Fondo</span><span>${(p.weight*100).toFixed(1)}%</span></div>
+                <div class="port-card-row"><span>Sharpe 1Yr</span><span>${sh1Str}</span></div>
+                <div class="port-card-row"><span>Sharpe 3Yr</span><span>${sh3Str}</span></div>
+                <div class="port-card-benchmark">${p.bm}</div>
+            </div>`;
+        });
+    }
+
+    document.getElementById('portafolio').innerHTML = `
+        <div class="section-title">Composici&oacute;n del Portafolio</div>
+        <div class="grid-2" style="margin-bottom:1.5rem">
+            <div class="card"><div class="card-title">Distribuci&oacute;n por Manager (Renta Fija Global)</div><div class="chart-container tall"><canvas id="pieManagers"></canvas></div></div>
+            <div class="card"><div class="card-title">Distribuci&oacute;n del Fondo Total (FAP)</div><div class="chart-container tall"><canvas id="pieFAP"></canvas></div></div>
+        </div>
+        <div class="card-title" style="margin-top:0.5rem">Detalle de Portafolios del FAP</div>
+        <div class="port-grid">${cardsHtml}</div>`;
+
+    // ===== CREATE CHARTS =====
+    function darkBarOpts(t){return{responsive:true,maintainAspectRatio:false,scales:{y:{title:{display:true,text:t,color:tickColor},ticks:{color:tickColor},grid:{display:false}},x:{grid:{display:false},ticks:{color:tickColor}}},plugins:{legend:{display:false}}}}
+    function darkLineOpts(t){return{responsive:true,maintainAspectRatio:false,scales:{y:{title:{display:true,text:t,color:tickColor},ticks:{color:tickColor},grid:{display:false}},x:{grid:{display:false},ticks:{color:tickColor}}},plugins:{legend:{display:false}},interaction:{mode:'index',intersect:false}}}
+    function lineDs(label,data,color){return{label,data,borderColor:color,borderWidth:2.5,pointRadius:5,pointBackgroundColor:color,tension:0.3,fill:false}}
+    function barDs(label,data,color,bg){return{label,data,backgroundColor:bg,borderColor:color,borderWidth:1.5,borderRadius:4}}
+
+    // Radar
+    charts.radar = new Chart(document.getElementById('radarOverview'),{type:'radar',data:{labels:['Alfa','Ratio de\nInformaci\u00f3n','Tracking Error\n(inverso)','VaR 95%\n(inverso)'],datasets:[
+        {label:'Goldman Sachs',data:d.gsZS.map(v=>+v.toFixed(2)),borderColor:GS,backgroundColor:'rgba(59,130,246,0.1)',borderWidth:2.5,pointRadius:5,pointBackgroundColor:GS},
+        {label:'BlackRock Inc',data:d.brZS.map(v=>+v.toFixed(2)),borderColor:BR,backgroundColor:'rgba(56,189,248,0.08)',borderWidth:2.5,pointRadius:5,pointBackgroundColor:BR},
+        {label:'Morgan Stanley',data:d.msZS.map(v=>+v.toFixed(2)),borderColor:MS,backgroundColor:'rgba(52,211,153,0.1)',borderWidth:2.5,pointRadius:5,pointBackgroundColor:MS}
+    ]},options:{responsive:true,maintainAspectRatio:false,scales:{r:{min:0,max:5,ticks:{stepSize:1,font:{size:10},backdropColor:'transparent',color:tickColor},grid:{color:gridColor},angleLines:{color:gridColor},pointLabels:{font:{size:11,weight:'500'},color:'#C0C0D0'}}},plugins:{legend:{position:'bottom',labels:{padding:20,usePointStyle:true,color:'#C0C0D0'}}}}});
+
+    // Scoring bar
+    charts.scoring = new Chart(document.getElementById('scoringBar'),{type:'bar',data:{labels:['Goldman Sachs','Morgan Stanley','BlackRock Inc'],datasets:[{data:[+d.gsTotal.toFixed(2),+d.msTotal.toFixed(2),+d.brTotal.toFixed(2)],backgroundColor:[GS_BG,MS_BG,BR_BG],borderColor:[GS,MS,BR],borderWidth:2,borderRadius:8,barPercentage:0.6}]},options:{responsive:true,maintainAspectRatio:false,indexAxis:'y',scales:{x:{min:0,max:5,grid:{display:false},ticks:{color:tickColor},title:{display:true,text:'Puntaje (1-5)',font:{size:11},color:tickColor}},y:{grid:{display:false},ticks:{color:'#C0C0D0'}}},plugins:{legend:{display:false},datalabels:{anchor:'end',align:'end',offset:4,font:{weight:'700',size:14},color:ctx=>[GS,MS,BR][ctx.dataIndex],formatter:v=>v.toFixed(2)}}},plugins:[ChartDataLabels]});
+
+    // Return (line)
+    charts.ret = new Chart(document.getElementById('returnChart'),{type:'line',data:{labels:['1 Yr','3 Yr','5 Yr'],datasets:[
+        lineDs('Goldman Sachs',d.gsRet.slice(1).map(v=>+(v*100).toFixed(2)),GS),
+        lineDs('BlackRock Inc',d.brRet.slice(1).map(v=>+(v*100).toFixed(2)),BR),
+        lineDs('Morgan Stanley',d.msRet.slice(1).map(v=>+(v*100).toFixed(2)),MS),
+        {label:'Benchmark',data:d.bmRet.slice(1).map(v=>+(v*100).toFixed(2)),borderColor:'#6B7280',borderWidth:2,borderDash:[6,4],pointRadius:4,pointBackgroundColor:'#6B7280',tension:0.3,fill:false}
+    ]},options:darkLineOpts('Retorno (%)')});
+
+    // Alfa (bar)
+    charts.alfa = new Chart(document.getElementById('alfaChart'),{type:'bar',data:{labels:['YTD / 1 Yr','3 Yr','5 Yr'],datasets:[
+        barDs('Goldman Sachs',[+(d.gsAlfa[0]*10000).toFixed(1),+(d.gsAlfa[2]*10000).toFixed(1),+(d.gsAlfa[3]*10000).toFixed(1)],GS,GS_BG),
+        barDs('BlackRock Inc',[+(d.brAlfa[0]*10000).toFixed(1),+(d.brAlfa[2]*10000).toFixed(1),+(d.brAlfa[3]*10000).toFixed(1)],BR,BR_BG),
+        barDs('Morgan Stanley',[+(d.msAlfa[0]*10000).toFixed(1),+(d.msAlfa[2]*10000).toFixed(1),+(d.msAlfa[3]*10000).toFixed(1)],MS,MS_BG)
+    ]},options:darkBarOpts('Alfa (bps)')});
+
+    // IR (bar)
+    charts.ir = new Chart(document.getElementById('irChart'),{type:'bar',data:{labels:['1 Yr','3 Yr','5 Yr'],datasets:[
+        barDs('Goldman Sachs',d.gsIR.map(v=>+v.toFixed(2)),GS,GS_BG),
+        barDs('BlackRock Inc',d.brIR.map(v=>+v.toFixed(2)),BR,BR_BG),
+        barDs('Morgan Stanley',d.msIR.map(v=>+v.toFixed(2)),MS,MS_BG)
+    ]},options:darkBarOpts('Ratio de Informaci\u00f3n')});
+
+    // Sharpe (line)
+    charts.sharpe = new Chart(document.getElementById('sharpeChart'),{type:'line',data:{labels:['1 Yr','3 Yr','5 Yr'],datasets:[
+        lineDs('Goldman Sachs',d.gsSh.map(v=>+v.toFixed(2)),GS),
+        lineDs('BlackRock Inc',d.brSh.map(v=>+v.toFixed(2)),BR),
+        lineDs('Morgan Stanley',d.msSh.map(v=>+v.toFixed(2)),MS),
+        {label:'Benchmark',data:d.bmSh.map(v=>+v.toFixed(2)),borderColor:'#6B7280',borderWidth:2,borderDash:[6,4],pointRadius:4,pointBackgroundColor:'#6B7280',tension:0.3,fill:false}
+    ]},options:darkLineOpts('Ratio de Sharpe')});
+
+    // TE (bar)
+    charts.te = new Chart(document.getElementById('teChart'),{type:'bar',data:{labels:['1 Yr','3 Yr','5 Yr'],datasets:[
+        barDs('Goldman Sachs',d.gsTE.map(v=>+v.toFixed(1)),GS,GS_BG),
+        barDs('BlackRock Inc',d.brTE.map(v=>+v.toFixed(1)),BR,BR_BG),
+        barDs('Morgan Stanley',d.msTE.map(v=>+v.toFixed(1)),MS,MS_BG)
+    ]},options:darkBarOpts('Tracking Error (bps)')});
+
+    // VaR (bar)
+    charts.var = new Chart(document.getElementById('varChart'),{type:'bar',data:{labels:['1 Yr','3 Yr','5 Yr'],datasets:[
+        barDs('Goldman Sachs',d.gsVaR.map(v=>+(v*100).toFixed(2)),GS,GS_BG),
+        barDs('BlackRock Inc',d.brVaR.map(v=>+(v*100).toFixed(2)),BR,BR_BG),
+        barDs('Morgan Stanley',d.msVaR.map(v=>+(v*100).toFixed(2)),MS,MS_BG)
+    ]},options:darkBarOpts('VaR 95% (%)')});
+
+    // Hit Ratio (bar)
+    charts.hr = new Chart(document.getElementById('hitRatioChart'),{type:'bar',data:{labels:['1 Yr','3 Yr','5 Yr'],datasets:[
+        barDs('Goldman Sachs',d.gsHR.map(v=>+(v*100).toFixed(1)),GS,GS_BG),
+        barDs('BlackRock Inc',d.brHR.map(v=>+(v*100).toFixed(1)),BR,BR_BG),
+        barDs('Morgan Stanley',d.msHR.map(v=>+(v*100).toFixed(1)),MS,MS_BG)
+    ]},options:{responsive:true,maintainAspectRatio:false,scales:{y:{title:{display:true,text:'Hit Ratio (%)',color:tickColor},min:0,max:100,ticks:{callback:v=>v+'%',color:tickColor},grid:{display:false}},x:{grid:{display:false},ticks:{color:tickColor}}},plugins:{legend:{display:false}}}});
+
+    // Drawdown (bar)
+    charts.dd = new Chart(document.getElementById('drawdownChart'),{type:'bar',data:{labels:['1 Yr','3 Yr','5 Yr'],datasets:[
+        barDs('Goldman Sachs',d.gsDD.map(v=>+(v*100).toFixed(2)),GS,GS_BG),
+        barDs('BlackRock Inc',d.brDD.map(v=>+(v*100).toFixed(2)),BR,BR_BG),
+        barDs('Morgan Stanley',d.msDD.map(v=>+(v*100).toFixed(2)),MS,MS_BG)
+    ]},options:darkBarOpts('Drawdown (%)')});
+
+    // Z-Score (bar)
+    charts.zs = new Chart(document.getElementById('zscoreChart'),{type:'bar',data:{labels:['Alfa','Ratio de\nInformaci\u00f3n','Tracking Error','VaR 95%'],datasets:[
+        barDs('Goldman Sachs',d.gsZ.map(v=>+v.toFixed(2)),GS,GS_BG),
+        barDs('BlackRock Inc',d.brZ.map(v=>+v.toFixed(2)),BR,BR_BG),
+        barDs('Morgan Stanley',d.msZ.map(v=>+v.toFixed(2)),MS,MS_BG)
+    ]},options:{responsive:true,maintainAspectRatio:false,scales:{y:{title:{display:true,text:'Z-Score',color:tickColor},ticks:{color:tickColor},grid:{display:false}},x:{grid:{display:false},ticks:{color:tickColor}}},plugins:{legend:{position:'bottom',labels:{usePointStyle:true,padding:15,color:'#C0C0D0'}}}}});
+
+    // Z-Scale (bar)
+    charts.zsc = new Chart(document.getElementById('zscaleChart'),{type:'bar',data:{labels:['Alfa','Ratio de\nInformaci\u00f3n','Tracking Error','VaR 95%'],datasets:[
+        barDs('Goldman Sachs',d.gsZS.map(v=>+v.toFixed(2)),GS,GS_BG),
+        barDs('BlackRock Inc',d.brZS.map(v=>+v.toFixed(2)),BR,BR_BG),
+        barDs('Morgan Stanley',d.msZS.map(v=>+v.toFixed(2)),MS,MS_BG)
+    ]},options:{responsive:true,maintainAspectRatio:false,scales:{y:{min:0,max:5,title:{display:true,text:'Escala (1-5)',color:tickColor},ticks:{color:tickColor},grid:{display:false}},x:{grid:{display:false},ticks:{color:tickColor}}},plugins:{legend:{position:'bottom',labels:{usePointStyle:true,padding:15,color:'#C0C0D0'}}}}});
+
+    // Pie Managers
+    charts.pieM = new Chart(document.getElementById('pieManagers'),{type:'doughnut',data:{labels:['GS - Renta Fija I','BR - Renta Fija II','MS - Renta Fija III'],datasets:[{data:[+(d.gsVal/1e6).toFixed(1),+(d.brVal/1e6).toFixed(1),+(d.msVal/1e6).toFixed(1)],backgroundColor:[GS,BR,MS],borderWidth:2,borderColor:'#1C1E2E',hoverOffset:8}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{padding:20,usePointStyle:true,color:'#C0C0D0'}},datalabels:{color:'#fff',font:{weight:'700',size:13},formatter:(v,ctx)=>{const t=ctx.dataset.data.reduce((a,b)=>a+b,0);return(v/t*100).toFixed(1)+'%'}}}},plugins:[ChartDataLabels]});
+
+    // Pie FAP
+    if (d.fapGlobalAgg) {
+        const fapData = [d.fapGlobalAgg, d.fapEquity, d.fapCash, d.fapAlts, d.fapHY, d.fapMBS, d.fapILB].map(v=>+(v/1e6).toFixed(1));
+        charts.pieF = new Chart(document.getElementById('pieFAP'),{type:'doughnut',data:{labels:['Renta Fija (Global Agg)','Renta Variable','Short Duration/Cash','Alternative Investments','High Yield','MBS','Inflation Linked'],datasets:[{data:fapData,backgroundColor:['#4A6FA5','#5B8C5A','#C4A35A','#7A8B99','#8B6B5B','#5A7D8B','#9B7B8B'],borderWidth:2,borderColor:'#1C1E2E',hoverOffset:8}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{padding:12,usePointStyle:true,font:{size:11},color:'#C0C0D0'}},datalabels:{color:'#fff',font:{weight:'600',size:11},formatter:(v,ctx)=>{const t=ctx.dataset.data.reduce((a,b)=>a+b,0);const p=(v/t*100).toFixed(1);return p>5?p+'%':''}}}},plugins:[ChartDataLabels]});
+    }
+}
+
+// ===== File upload handler =====
+document.getElementById('fileInput').addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const status = document.getElementById('uploadStatus');
+    status.style.display = 'inline';
+    status.textContent = 'Cargando...';
+    status.style.color = '#FBBF24';
+
+    const reader = new FileReader();
+    reader.onload = function(ev) {
+        try {
+            const wb = XLSX.read(ev.target.result, {type:'array', cellDates:true});
+            const data = extractData(wb);
+            renderDashboard(data);
+            status.textContent = 'Datos actualizados: ' + file.name;
+            status.style.color = '#34D399';
+        } catch(err) {
+            status.textContent = 'Error: ' + err.message;
+            status.style.color = '#F87171';
+            console.error(err);
+        }
+    };
+    reader.readAsArrayBuffer(file);
+});
+
+// ===== Load default data on startup =====
+// Pre-populated with current Excel data so dashboard shows immediately
+const defaultData = {
+    fecha: '31 de diciembre de 2025',
+    gsVal:118712638.03, brVal:292896718.87, msVal:119960061.09, totalVal:531569417.99,
+    gsRet:[0.054006461517598,0.054006461517598,0.052200643687662,0.004977369017573],
+    brRet:[0.052553987058004,0.052553987058004,0.053173896476105,0.00447005763319],
+    msRet:[0.054946264539219,0.054946264539219,0.054148459901021,0.005289135474741],
+    bmRet:[0.04863782093969501,0.04863782093969501,0.051240014935647,0.0033857831826180],
+    gsAlfa:[0.005368640577903,0.005368640577903,0.000960628752015,0.001591585834955],
+    brAlfa:[0.003916166118308,0.003916166118308,0.001933881540458,0.001084287270016],
+    msAlfa:[0.006408443599524,0.006308443599524,0.002908444965374,0.001903365111567],
+    gsIR:[2.91341567821823,0.289950640075443,0.446900895780664],
+    brIR:[1.78669928817624,0.547431230173263,0.286994088868558],
+    msIR:[2.02300002095732,0.591379033798485,0.448594016529716],
+    gsSh:[0.541420779443817,0.044144590033055,-0.578323875922875],
+    brSh:[0.470515073977911,0.064095278930148,-0.575573693924481],
+    msSh:[0.604219611065521,0.090853594661802,0.448594016529716],
+    bmSh:[0.717128452373615,-0.317712207593857,-0.508021043454173],
+    gsTE:[18.427307225813,33.130768456479295,35.6138430238464],
+    brTE:[21.9184400207906,35.3264745207593,37.7808223957072],
+    msTE:[31.183606199560298,49.180725036739,42.4295697542119],
+    gsVaR:[0.003357287627586,0.015516544112408,0.019240248170272],
+    brVaR:[0.00309160279548,0.017015208101529,0.020186157605841],
+    msVaR:[0.003411385440233,0.015354772494103,0.021425478533283],
+    gsHR:[0.833333333333333,0.527777777777777,0.583333333333333],
+    brHR:[0.583333333333333,0.444444444444444,0.516666666666666],
+    msHR:[0.75,0.611111111111111,0.6],
+    gsDD:[-0.0043661769072606,-0.0270669052979452,-0.13412138630844],
+    brDD:[-0.00434924054778,-0.0323266612596693,-0.136027307898157],
+    msDD:[-0.0045543164867019,-0.0291838280466593,-0.13631677965874],
+    gsZ:[0.15764762791754,0.56820529603870,-1.08094384735105,-0.95238584394665],
+    brZ:[-1.06946018471192,-1.15465250653704,0.18880404178208,-0.08924576010239],
+    msZ:[0.91181255679439,0.58644721049835,0.89213980556898,1.04163160404904],
+    gsZS:[3.47741320399235,4.95809105180784,5.00,5.00],
+    brZS:[1.00,1.00,2.42586101252426,3.26854055923761],
+    msZS:[5.00,5.00,1.00,1.00],
+    gsSc:[0.86935330099809,1.23952276295196,1.25,1.25],
+    brSc:[0.25,0.25,0.60646525313106,0.81713513980940],
+    msSc:[1.25,1.25,0.25,0.25],
+    gsTotal:4.60887606395005, brTotal:1.92360039294047, msTotal:3.00,
+    gsRank:1, brRank:3, msRank:2,
+    portCards:[
+        {name:'Renta Variable',mgr:'Goldman Sachs',cls:'gs',val:259619971.82,weight:0.166291377898498,sh1:0.807218066769,sh3:0.399958965103,bm:'MSCI ACWI ND'},
+        {name:'Short Duration (Cash)',mgr:'Morgan Stanley',cls:'ms',val:420133463.91,weight:0.269103228557861,sh1:0.943269941267,sh3:0.220113727326,bm:'50%ML 0-1yr / 50%ML 6m T-Bill'},
+        {name:'Renta Fija Global II',mgr:'BlackRock Inc',cls:'br',val:284198638.7,weight:0.182034467129003,sh1:0.728330835818,sh3:-0.304203932288,bm:'BBG Global Aggregate Hedged USD'},
+        {name:'Renta Fija Global I',mgr:'Goldman Sachs',cls:'gs',val:115159695.51,weight:0.073761907878207,sh1:0.620418750141,sh3:-0.303979877845,bm:'BBG Global Aggregate Hedged USD'},
+        {name:'Renta Fija Global III',mgr:'Morgan Stanley',cls:'ms',val:116128740.73,weight:0.074382599205419,sh1:0.889355686843,sh3:-0.303141090874,bm:'BBG Global Aggregate Hedged USD'},
+        {name:'Renta Fija ILB',mgr:'Morgan Stanley',cls:'ms',val:52099633.49,weight:0.033370775677711,sh1:-0.251797543222,sh3:-0.844826678095,bm:'BBG W Gv IL All Mar Hdg US'},
+        {name:'Global High Yield',mgr:'Neuberger Berman',cls:'other',val:97113773.45,weight:0.062203162132379,sh1:1.547234399332,sh3:null,bm:'BBG Global High Yield'},
+        {name:'MBS',mgr:'Morgan Stanley',cls:'ms',val:80814257.48,weight:0.051763021681208,sh1:0.893090792213,sh3:null,bm:'BBG Global Aggregate US MBS Index'},
+        {name:'Alternative Investments',mgr:'Varios',cls:'other',val:135967140.3,weight:0.087089459839714,sh1:0.476119789583,sh3:1.328721469980,bm:'MSCI World + 3%'}
+    ],
+    fapGlobalAgg:515487074.94, fapEquity:259619971.82, fapCash:420133463.91,
+    fapAlts:135967140.3, fapHY:97113773.45, fapMBS:80814257.48, fapILB:52099633.49
+};
+
+renderDashboard(defaultData);
+</script>
+</body>
+</html>
