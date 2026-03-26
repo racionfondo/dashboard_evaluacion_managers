@@ -178,9 +178,9 @@ function renderDashboard(d) {
 
     // Determine ranking order for manager cards
     const managers = [
-        {name:'Goldman Sachs', val:d.gsVal, alfa:d.gsAlfa[0], ir:d.gsIR[0], hr:d.gsHR[0], total:d.gsTotal, rank:d.gsRank, cls:'gs', label:'Renta Fija I'},
-        {name:'Morgan Stanley', val:d.msVal, alfa:d.msAlfa[0], ir:d.msIR[0], hr:d.msHR[0], total:d.msTotal, rank:d.msRank, cls:'ms', label:'Renta Fija III'},
-        {name:'BlackRock Inc', val:d.brVal, alfa:d.brAlfa[0], ir:d.brIR[0], hr:d.brHR[0], total:d.brTotal, rank:d.brRank, cls:'br', label:'Renta Fija II'}
+        {name:'Goldman Sachs', val:d.gsVal, alfa:d.gsAlfa[0], ir:d.gsIR[0], hr:d.gsHR[0], total:d.gsTotal, rank:d.gsRank, cls:'gs', label:'Renta Fija I', rating:d.gsRating||'N/A'},
+        {name:'Morgan Stanley', val:d.msVal, alfa:d.msAlfa[0], ir:d.msIR[0], hr:d.msHR[0], total:d.msTotal, rank:d.msRank, cls:'ms', label:'Renta Fija III', rating:d.msRating||'N/A'},
+        {name:'BlackRock Inc', val:d.brVal, alfa:d.brAlfa[0], ir:d.brIR[0], hr:d.brHR[0], total:d.brTotal, rank:d.brRank, cls:'br', label:'Renta Fija II', rating:d.brRating||'N/A'}
     ];
     const best = managers.reduce((a,b) => (a.rank < b.rank ? a : b));
 
@@ -203,6 +203,12 @@ function renderDashboard(d) {
                     <div class="kpi-label" style="margin-top:0.3rem">IR 1Yr: <span class="positive">${m.ir.toFixed(2)}</span></div>
                     <div class="kpi-label" style="margin-top:0.3rem">Hit Ratio 1Yr: <span class="positive">${(m.hr*100).toFixed(1)}%</span></div>
                 </div>
+            </div>`).join('')}
+        </div>
+        <div class="grid-3" style="margin-bottom:1.5rem">
+            ${managers.map((m,i) => `<div class="card" style="text-align:center">
+                <div class="card-title">Calidad Crediticia &mdash; ${m.name}</div>
+                <canvas id="gauge${i}" width="220" height="140" style="margin:0 auto;display:block;"></canvas>
             </div>`).join('')}
         </div>
         <div class="grid-2">
@@ -302,6 +308,77 @@ function renderDashboard(d) {
     function barDs(label,data,color,bg){return{label,data,backgroundColor:bg,borderColor:color,borderWidth:1.5,borderRadius:4}}
 
     // Radar
+    // ===== GAUGE CHARTS =====
+    const ratingScale = ['AAA','AA+','AA','AA-','A+','A','A-','BBB+','BBB','BBB-'];
+    const gaugeColors = ['#34D399','#34D399','#3B82F6','#3B82F6','#38BDF8','#38BDF8','#FBBF24','#FBBF24','#F87171','#F87171'];
+
+    function drawGauge(canvasId, rating, color) {
+        const canvas = document.getElementById(canvasId);
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        const W = canvas.width, H = canvas.height;
+        const cx = W/2, cy = H - 20;
+        const r = Math.min(W/2 - 10, H - 30);
+        const ratingIdx = ratingScale.indexOf(rating);
+        const needlePos = ratingIdx >= 0 ? ratingIdx : 4;
+
+        ctx.clearRect(0, 0, W, H);
+
+        // Draw arc segments
+        const totalAngle = Math.PI;
+        const segAngle = totalAngle / ratingScale.length;
+        for (let i = 0; i < ratingScale.length; i++) {
+            const startA = Math.PI + i * segAngle;
+            const endA = startA + segAngle;
+            ctx.beginPath();
+            ctx.arc(cx, cy, r, startA, endA);
+            ctx.arc(cx, cy, r * 0.55, endA, startA, true);
+            ctx.closePath();
+            ctx.fillStyle = i === needlePos ? gaugeColors[i] : (i <= needlePos ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.06)');
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+        }
+
+        // Labels
+        ctx.font = '9px Segoe UI';
+        ctx.fillStyle = '#8B8DA3';
+        ctx.textAlign = 'center';
+        for (let i = 0; i < ratingScale.length; i++) {
+            const a = Math.PI + (i + 0.5) * segAngle;
+            const lx = cx + Math.cos(a) * (r + 12);
+            const ly = cy + Math.sin(a) * (r + 12);
+            ctx.fillText(ratingScale[i], lx, ly);
+        }
+
+        // Needle
+        const needleAngle = Math.PI + (needlePos + 0.5) * segAngle;
+        const needleLen = r * 0.48;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(cx + Math.cos(needleAngle) * needleLen, cy + Math.sin(needleAngle) * needleLen);
+        ctx.strokeStyle = '#FFFFFF';
+        ctx.lineWidth = 2.5;
+        ctx.lineCap = 'round';
+        ctx.stroke();
+
+        // Center dot
+        ctx.beginPath();
+        ctx.arc(cx, cy, 5, 0, Math.PI * 2);
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fill();
+
+        // Rating text
+        ctx.font = 'bold 18px Segoe UI';
+        ctx.fillStyle = color;
+        ctx.textAlign = 'center';
+        ctx.fillText(rating, cx, cy - 15);
+    }
+
+    const mgrColors = [GS, MS, BR];
+    managers.forEach((m, i) => drawGauge('gauge' + i, m.rating, mgrColors[i]));
+
     charts.radar = new Chart(document.getElementById('radarOverview'),{type:'radar',data:{labels:['Alfa','Ratio de\nInformaci\u00f3n','Tracking Error\n(inverso)','VaR 95%\n(inverso)'],datasets:[
         {label:'Goldman Sachs',data:d.gsZS.map(v=>+v.toFixed(2)),borderColor:GS,backgroundColor:'rgba(59,130,246,0.1)',borderWidth:2.5,pointRadius:5,pointBackgroundColor:GS},
         {label:'BlackRock Inc',data:d.brZS.map(v=>+v.toFixed(2)),borderColor:BR,backgroundColor:'rgba(56,189,248,0.08)',borderWidth:2.5,pointRadius:5,pointBackgroundColor:BR},
