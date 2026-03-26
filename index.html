@@ -6,7 +6,6 @@
     <title>Dashboard Evaluaci&oacute;n de Managers - FAP</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <style>
         :root {
             --gs-color: #3B82F6; --br-color: #38BDF8; --ms-color: #34D399;
@@ -83,7 +82,6 @@
         .upload-btn { background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.25); color:#FFF; padding:0.5rem 1.2rem; border-radius:8px; cursor:pointer; font-size:0.82rem; font-weight:600; transition:all 0.2s; display:flex; align-items:center; gap:0.5rem; }
         .upload-btn:hover { background:rgba(255,255,255,0.2); border-color:rgba(255,255,255,0.4); }
         .upload-status { font-size:0.75rem; color:var(--positive); display:none; }
-        #fileInput { display:none; }
 
         @media (max-width:1024px) { .grid-2,.grid-3 { grid-template-columns:1fr; } .grid-4 { grid-template-columns:1fr 1fr; } .port-grid { grid-template-columns:1fr 1fr; } }
         @media (max-width:600px) { .header { flex-direction:column; text-align:center; gap:0.5rem; } .container { padding:1rem; } .grid-4,.port-grid { grid-template-columns:1fr; } }
@@ -97,8 +95,7 @@
         <div class="subtitle">Fondo de Ahorro de Panam&aacute; &mdash; Portafolio de Renta Fija Global</div>
     </div>
     <div class="upload-area">
-        <label class="upload-btn" for="fileInput">&#x21BB; Actualizar Datos (Excel)</label>
-        <input type="file" id="fileInput" accept=".xlsx,.xls">
+        <button class="upload-btn" id="refreshBtn" onclick="loadData()">&#x21BB; Actualizar Datos</button>
         <span class="upload-status" id="uploadStatus"></span>
     </div>
     <div class="header-right">
@@ -146,14 +143,6 @@ Chart.defaults.color='#8B8DA3';
 // ===== Chart instances =====
 let charts = {};
 
-// ===== Helper: read cell value =====
-function cv(ws, ref) {
-    const c = ws[ref];
-    if (!c) return null;
-    return c.v;
-}
-function cn(ws, ref) { return Number(cv(ws, ref)) || 0; }
-
 // ===== Formatting helpers =====
 function fmtM(v) { return '$' + (v/1e6).toFixed(1) + 'M'; }
 function fmtUSD(v) { return '$' + Math.round(v).toLocaleString('en-US'); }
@@ -169,138 +158,6 @@ function bestCls(vals, idx, lower) {
 function worstCls(vals, idx, lower) {
     const worst = lower ? Math.max(...vals) : Math.min(...vals);
     return vals[idx] === worst ? 'negative' : '';
-}
-
-// ===== Extract all data from workbook =====
-function extractData(wb) {
-    const gs = wb.Sheets['GS-RF I'];
-    const br = wb.Sheets['BR-RF II'];
-    const ms = wb.Sheets['MS-RF III'];
-    const ev = wb.Sheets['Evaluacion (condensado)'] || wb.Sheets['Evaluación (condensado)'];
-    const prop = wb.Sheets['Proporción'] || wb.Sheets['Proporcion'];
-
-    const d = {};
-
-    // Date
-    const rawDate = cv(gs, 'E12');
-    if (rawDate instanceof Date) {
-        const months = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
-        d.fecha = rawDate.getDate() + ' de ' + months[rawDate.getMonth()] + ' de ' + rawDate.getFullYear();
-    } else if (typeof rawDate === 'number') {
-        // Excel serial date
-        const dt = XLSX.SSF.parse_date_code(rawDate);
-        const months = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
-        d.fecha = dt.d + ' de ' + months[dt.m-1] + ' de ' + dt.y;
-    } else {
-        d.fecha = String(rawDate || '');
-    }
-
-    // Portfolio values
-    d.gsVal = cn(gs,'E13'); d.brVal = cn(br,'E13'); d.msVal = cn(ms,'E13');
-    d.totalVal = d.gsVal + d.brVal + d.msVal;
-
-    // Returns (Portfolio) - YTD, 1Yr, 3Yr, 5Yr
-    d.gsRet = [cn(gs,'D22'), cn(gs,'E22'), cn(gs,'F22'), cn(gs,'G22')];
-    d.brRet = [cn(br,'D22'), cn(br,'E22'), cn(br,'F22'), cn(br,'G22')];
-    d.msRet = [cn(ms,'D22'), cn(ms,'E22'), cn(ms,'F22'), cn(ms,'G22')];
-    d.bmRet = [cn(gs,'D23'), cn(gs,'E23'), cn(gs,'F23'), cn(gs,'G23')];
-
-    // Alfa - YTD, 1Yr, 3Yr, 5Yr
-    d.gsAlfa = [cn(gs,'D24'), cn(gs,'E24'), cn(gs,'F24'), cn(gs,'G24')];
-    d.brAlfa = [cn(br,'D24'), cn(br,'E24'), cn(br,'F24'), cn(br,'G24')];
-    d.msAlfa = [cn(ms,'D24'), cn(ms,'E24'), cn(ms,'F24'), cn(ms,'G24')];
-
-    // IR - 1Yr, 3Yr, 5Yr
-    d.gsIR = [cn(gs,'K24'), cn(gs,'L24'), cn(gs,'M24')];
-    d.brIR = [cn(br,'K24'), cn(br,'L24'), cn(br,'M24')];
-    d.msIR = [cn(ms,'K24'), cn(ms,'L24'), cn(ms,'M24')];
-
-    // Sharpe - 1Yr, 3Yr, 5Yr
-    d.gsSh = [cn(gs,'K22'), cn(gs,'L22'), cn(gs,'M22')];
-    d.brSh = [cn(br,'K22'), cn(br,'L22'), cn(br,'M22')];
-    d.msSh = [cn(ms,'K22'), cn(ms,'L22'), cn(ms,'M22')];
-    d.bmSh = [cn(gs,'K23'), cn(gs,'L23'), cn(gs,'M23')];
-
-    // TE - 1Yr, 3Yr, 5Yr
-    d.gsTE = [cn(gs,'D39'), cn(gs,'E39'), cn(gs,'F39')];
-    d.brTE = [cn(br,'D39'), cn(br,'E39'), cn(br,'F39')];
-    d.msTE = [cn(ms,'D39'), cn(ms,'E39'), cn(ms,'F39')];
-
-    // VaR 95% - 1Yr, 3Yr, 5Yr
-    d.gsVaR = [cn(gs,'K39'), cn(gs,'L39'), cn(gs,'M39')];
-    d.brVaR = [cn(br,'K39'), cn(br,'L39'), cn(br,'M39')];
-    d.msVaR = [cn(ms,'K39'), cn(ms,'L39'), cn(ms,'M39')];
-
-    // Hit Ratio - 1Yr, 3Yr, 5Yr
-    d.gsHR = [cn(gs,'D40'), cn(gs,'E40'), cn(gs,'F40')];
-    d.brHR = [cn(br,'D40'), cn(br,'E40'), cn(br,'F40')];
-    d.msHR = [cn(ms,'D40'), cn(ms,'E40'), cn(ms,'F40')];
-
-    // Drawdown - 1Yr, 3Yr, 5Yr
-    d.gsDD = [cn(gs,'K40'), cn(gs,'L40'), cn(gs,'M40')];
-    d.brDD = [cn(br,'K40'), cn(br,'L40'), cn(br,'M40')];
-    d.msDD = [cn(ms,'K40'), cn(ms,'L40'), cn(ms,'M40')];
-
-    // Z-Scores from Evaluacion condensado: Alfa, IR, TE, VaR
-    if (ev) {
-        d.gsZ = [cn(ev,'F52'), cn(ev,'F53'), cn(ev,'F54'), cn(ev,'F55')];
-        d.brZ = [cn(ev,'H52'), cn(ev,'H53'), cn(ev,'H54'), cn(ev,'H55')];
-        d.msZ = [cn(ev,'J52'), cn(ev,'J53'), cn(ev,'J54'), cn(ev,'J55')];
-
-        // Z-Scale 1-5
-        d.gsZS = [cn(ev,'F60'), cn(ev,'F61'), cn(ev,'F62'), cn(ev,'F63')];
-        d.brZS = [cn(ev,'H60'), cn(ev,'H61'), cn(ev,'H62'), cn(ev,'H63')];
-        d.msZS = [cn(ev,'J60'), cn(ev,'J61'), cn(ev,'J62'), cn(ev,'J63')];
-
-        // Scoring ponderado
-        d.gsSc = [cn(ev,'G69'), cn(ev,'G70'), cn(ev,'G71'), cn(ev,'G72')];
-        d.brSc = [cn(ev,'I69'), cn(ev,'I70'), cn(ev,'I71'), cn(ev,'I72')];
-        d.msSc = [cn(ev,'K69'), cn(ev,'K70'), cn(ev,'K71'), cn(ev,'K72')];
-
-        d.gsTotal = cn(ev,'G73'); d.brTotal = cn(ev,'I73'); d.msTotal = cn(ev,'K73');
-        d.gsRank = cn(ev,'G74'); d.brRank = cn(ev,'I74'); d.msRank = cn(ev,'K74');
-    }
-
-    // Proporcion data for portfolio cards
-    if (prop) {
-        d.portCards = [];
-        const rows = [
-            {r:11, name:'Renta Variable', mgr:'Goldman Sachs', cls:'gs', bmR:12},
-            {r:15, name:'Short Duration (Cash)', mgr:'Morgan Stanley', cls:'ms', bmR:16},
-            {r:21, name:'Renta Fija Global II', mgr:'BlackRock Inc', cls:'br', bmR:22},
-            {r:23, name:'Renta Fija Global I', mgr:'Goldman Sachs', cls:'gs', bmR:24},
-            {r:25, name:'Renta Fija Global III', mgr:'Morgan Stanley', cls:'ms', bmR:26},
-            {r:36, name:'Renta Fija ILB', mgr:'Morgan Stanley', cls:'ms', bmR:37},
-            {r:28, name:'Global High Yield', mgr:'Neuberger Berman', cls:'other', bmR:29},
-            {r:32, name:'MBS', mgr:'Morgan Stanley', cls:'ms', bmR:33},
-            {r:38, name:'Alternative Investments', mgr:'Varios', cls:'other', bmR:39}
-        ];
-        rows.forEach(x => {
-            const val = cn(prop,'D'+x.r);
-            const wt = cn(prop,'E'+x.r);
-            const sh1 = cv(prop,'F'+x.r);
-            const sh3 = cv(prop,'G'+x.r);
-            const bmName = cv(prop,'C'+x.bmR) || '';
-            d.portCards.push({
-                name: x.name, mgr: x.mgr, cls: x.cls,
-                val: val, weight: wt,
-                sh1: typeof sh1 === 'number' ? sh1 : null,
-                sh3: typeof sh3 === 'number' ? sh3 : null,
-                bm: bmName.trim().replace(/^\s+/,'')
-            });
-        });
-
-        // For FAP pie: aggregate categories
-        d.fapGlobalAgg = cn(prop,'D19');
-        d.fapEquity = cn(prop,'D9');
-        d.fapCash = cn(prop,'D13');
-        d.fapAlts = cn(prop,'D38');
-        d.fapHY = cn(prop,'D27');
-        d.fapMBS = cn(prop,'D30');
-        d.fapILB = cn(prop,'D34');
-    }
-
-    return d;
 }
 
 // ===== Render everything =====
@@ -533,90 +390,33 @@ function renderDashboard(d) {
     }
 }
 
-// ===== File upload handler =====
-document.getElementById('fileInput').addEventListener('change', function(e) {
-    const file = e.target.files[0];
-    if (!file) return;
+// ===== Load data from data.json =====
+function loadData() {
     const status = document.getElementById('uploadStatus');
     status.style.display = 'inline';
     status.textContent = 'Cargando...';
     status.style.color = '#FBBF24';
 
-    const reader = new FileReader();
-    reader.onload = function(ev) {
-        try {
-            const wb = XLSX.read(ev.target.result, {type:'array', cellDates:true});
-            const data = extractData(wb);
+    fetch('data.json?t=' + Date.now())
+        .then(r => {
+            if (!r.ok) throw new Error('No se pudo cargar data.json');
+            return r.json();
+        })
+        .then(data => {
             renderDashboard(data);
-            status.textContent = 'Datos actualizados: ' + file.name;
+            status.textContent = 'Datos actualizados (' + data.fecha + ')';
             status.style.color = '#34D399';
-        } catch(err) {
+            setTimeout(() => { status.style.display = 'none'; }, 4000);
+        })
+        .catch(err => {
             status.textContent = 'Error: ' + err.message;
             status.style.color = '#F87171';
             console.error(err);
-        }
-    };
-    reader.readAsArrayBuffer(file);
-});
+        });
+}
 
-// ===== Load default data on startup =====
-// Pre-populated with current Excel data so dashboard shows immediately
-const defaultData = {
-    fecha: '31 de diciembre de 2025',
-    gsVal:118712638.03, brVal:292896718.87, msVal:119960061.09, totalVal:531569417.99,
-    gsRet:[0.054006461517598,0.054006461517598,0.052200643687662,0.004977369017573],
-    brRet:[0.052553987058004,0.052553987058004,0.053173896476105,0.00447005763319],
-    msRet:[0.054946264539219,0.054946264539219,0.054148459901021,0.005289135474741],
-    bmRet:[0.04863782093969501,0.04863782093969501,0.051240014935647,0.0033857831826180],
-    gsAlfa:[0.005368640577903,0.005368640577903,0.000960628752015,0.001591585834955],
-    brAlfa:[0.003916166118308,0.003916166118308,0.001933881540458,0.001084287270016],
-    msAlfa:[0.006408443599524,0.006308443599524,0.002908444965374,0.001903365111567],
-    gsIR:[2.91341567821823,0.289950640075443,0.446900895780664],
-    brIR:[1.78669928817624,0.547431230173263,0.286994088868558],
-    msIR:[2.02300002095732,0.591379033798485,0.448594016529716],
-    gsSh:[0.541420779443817,0.044144590033055,-0.578323875922875],
-    brSh:[0.470515073977911,0.064095278930148,-0.575573693924481],
-    msSh:[0.604219611065521,0.090853594661802,0.448594016529716],
-    bmSh:[0.717128452373615,-0.317712207593857,-0.508021043454173],
-    gsTE:[18.427307225813,33.130768456479295,35.6138430238464],
-    brTE:[21.9184400207906,35.3264745207593,37.7808223957072],
-    msTE:[31.183606199560298,49.180725036739,42.4295697542119],
-    gsVaR:[0.003357287627586,0.015516544112408,0.019240248170272],
-    brVaR:[0.00309160279548,0.017015208101529,0.020186157605841],
-    msVaR:[0.003411385440233,0.015354772494103,0.021425478533283],
-    gsHR:[0.833333333333333,0.527777777777777,0.583333333333333],
-    brHR:[0.583333333333333,0.444444444444444,0.516666666666666],
-    msHR:[0.75,0.611111111111111,0.6],
-    gsDD:[-0.0043661769072606,-0.0270669052979452,-0.13412138630844],
-    brDD:[-0.00434924054778,-0.0323266612596693,-0.136027307898157],
-    msDD:[-0.0045543164867019,-0.0291838280466593,-0.13631677965874],
-    gsZ:[0.15764762791754,0.56820529603870,-1.08094384735105,-0.95238584394665],
-    brZ:[-1.06946018471192,-1.15465250653704,0.18880404178208,-0.08924576010239],
-    msZ:[0.91181255679439,0.58644721049835,0.89213980556898,1.04163160404904],
-    gsZS:[3.47741320399235,4.95809105180784,5.00,5.00],
-    brZS:[1.00,1.00,2.42586101252426,3.26854055923761],
-    msZS:[5.00,5.00,1.00,1.00],
-    gsSc:[0.86935330099809,1.23952276295196,1.25,1.25],
-    brSc:[0.25,0.25,0.60646525313106,0.81713513980940],
-    msSc:[1.25,1.25,0.25,0.25],
-    gsTotal:4.60887606395005, brTotal:1.92360039294047, msTotal:3.00,
-    gsRank:1, brRank:3, msRank:2,
-    portCards:[
-        {name:'Renta Variable',mgr:'Goldman Sachs',cls:'gs',val:259619971.82,weight:0.166291377898498,sh1:0.807218066769,sh3:0.399958965103,bm:'MSCI ACWI ND'},
-        {name:'Short Duration (Cash)',mgr:'Morgan Stanley',cls:'ms',val:420133463.91,weight:0.269103228557861,sh1:0.943269941267,sh3:0.220113727326,bm:'50%ML 0-1yr / 50%ML 6m T-Bill'},
-        {name:'Renta Fija Global II',mgr:'BlackRock Inc',cls:'br',val:284198638.7,weight:0.182034467129003,sh1:0.728330835818,sh3:-0.304203932288,bm:'BBG Global Aggregate Hedged USD'},
-        {name:'Renta Fija Global I',mgr:'Goldman Sachs',cls:'gs',val:115159695.51,weight:0.073761907878207,sh1:0.620418750141,sh3:-0.303979877845,bm:'BBG Global Aggregate Hedged USD'},
-        {name:'Renta Fija Global III',mgr:'Morgan Stanley',cls:'ms',val:116128740.73,weight:0.074382599205419,sh1:0.889355686843,sh3:-0.303141090874,bm:'BBG Global Aggregate Hedged USD'},
-        {name:'Renta Fija ILB',mgr:'Morgan Stanley',cls:'ms',val:52099633.49,weight:0.033370775677711,sh1:-0.251797543222,sh3:-0.844826678095,bm:'BBG W Gv IL All Mar Hdg US'},
-        {name:'Global High Yield',mgr:'Neuberger Berman',cls:'other',val:97113773.45,weight:0.062203162132379,sh1:1.547234399332,sh3:null,bm:'BBG Global High Yield'},
-        {name:'MBS',mgr:'Morgan Stanley',cls:'ms',val:80814257.48,weight:0.051763021681208,sh1:0.893090792213,sh3:null,bm:'BBG Global Aggregate US MBS Index'},
-        {name:'Alternative Investments',mgr:'Varios',cls:'other',val:135967140.3,weight:0.087089459839714,sh1:0.476119789583,sh3:1.328721469980,bm:'MSCI World + 3%'}
-    ],
-    fapGlobalAgg:515487074.94, fapEquity:259619971.82, fapCash:420133463.91,
-    fapAlts:135967140.3, fapHY:97113773.45, fapMBS:80814257.48, fapILB:52099633.49
-};
-
-renderDashboard(defaultData);
+// Cargar al iniciar
+loadData();
 </script>
 </body>
 </html>
